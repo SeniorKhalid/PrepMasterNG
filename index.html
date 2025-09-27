@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PrepMaster NG</title>
+  <!-- ✅ Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- important for mobile scaling -->
+  <style>
+    body { background: #f8f9fa; font-size: 1rem; }
+    .card { max-width: 700px; margin: 20px auto; }
+    .progress-bar { transition: width 1s linear; }
+    #result { font-size: 1.1em; }
+    #summary { font-size: 1.2em; }
+
+    /* 📱 Mobile adjustments */
+    @media (max-width: 576px) {
+      body { font-size: 0.9rem; }
+      h1 { font-size: 1.5rem; }
+      .btn { font-size: 1rem; padding: 12px; }
+      .card { margin: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid px-2">
+    <div class="card shadow">
+      <div class="card-body">
+        <h1 class="card-title text-center mb-4">🚀 PrepMaster NG 🚀</h1>
+
+        <!-- Quiz Area -->
+        <div id="quiz"></div>
+
+        <!-- Timer -->
+        <div id="timer" class="text-danger fw-bold mt-3 sticky-top bg-white p-2"></div>
+
+        <!-- Progress Bar -->
+        <div class="progress mt-2">
+          <div id="progress-bar" class="progress-bar bg-danger" style="width:100%"></div>
+        </div>
+
+        <!-- Results -->
+        <div id="result" class="mt-3"></div>
+        <div id="summary" class="mt-3"></div>
+
+        <!-- Leaderboard -->
+        <div id="leaderboard" class="mt-4 table-responsive"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔊 Sounds -->
+  <audio id="beep-sound">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="celebration-sound">
+    <source src="https://actions.google.com/sounds/v1/crowds/applause.ogg" type="audio/ogg">
+    <source src="https://actions.google.com/sounds/v1/crowds/applause.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+    let playerName, subject, numQuestions, timeLimit;
+    let currentQuestion = null;
+    let timerInterval, timeLeft;
+    let score = 0, totalQuestions = 0;
+
+    function askPlayerDetails() {
+      playerName = prompt("Enter your name:") || "Guest";
+      subject = prompt("Enter subject (e.g., Math, Science):") || "Math";
+      numQuestions = prompt("How many questions? (max 20)") || 10;
+      timeLimit = parseInt(prompt("How many seconds per question? (e.g., 10, 15, 30)") || 15);
+      score = 0;
+      totalQuestions = 0;
+    }
+
+    async function startQuiz() {
+      const res = await fetch("http://127.0.0.1:5000/start_quiz", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ subject, name: playerName, num_questions: numQuestions })
+      });
+      const data = await res.json();
+      if (data.error) {
+        document.getElementById("quiz").innerHTML = `<p class="text-danger">${data.error}</p>`;
+        return;
+      }
+      currentQuestion = data.first_question;
+      totalQuestions = data.total_questions;
+      showQuestion(currentQuestion);
+    }
+
+    function showQuestion(q) {
+      clearInterval(timerInterval);
+      if (!q) {
+        document.getElementById("quiz").innerHTML = `
+          <h2 class="text-center">🎉 Quiz Finished!</h2>
+          <div class="text-center">
+            <button class="btn btn-success mt-3 w-100" onclick="restartQuiz()">🔄 Play Again</button>
+          </div>`;
+        document.getElementById("timer").innerHTML = "";
+        document.getElementById("progress-bar").style.width = "0%";
+        document.getElementById("celebration-sound").play();
+
+        let percentage = ((score / totalQuestions) * 100).toFixed(2);
+        document.getElementById("summary").innerHTML = `
+          <div class="alert alert-info mt-3">
+            <h4>📊 Your Score Summary</h4>
+            <p>You answered <b>${score}</b> out of <b>${totalQuestions}</b> questions correctly.</p>
+            <p>That’s <b>${percentage}%</b>!</p>
+          </div>`;
+        loadLeaderboard();
+        return;
+      }
+
+      let html = `<div class="question h5 mb-3">${q.question}</div>`;
+      q.options.forEach(opt => {
+        html += `<button class="btn btn-outline-primary w-100 mb-2 btn-lg" onclick="submitAnswer('${opt}')">${opt}</button>`;
+      });
+      document.getElementById("quiz").innerHTML = html;
+
+      timeLeft = timeLimit;
+      document.getElementById("timer").innerHTML = `⏳ Time left: ${timeLeft}s`;
+      document.getElementById("progress-bar").style.width = "100%";
+
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById("timer").innerHTML = `⏳ Time left: ${timeLeft}s`;
+        document.getElementById("progress-bar").style.width = (timeLeft / timeLimit) * 100 + "%";
+        if (timeLeft <= 3 && timeLeft > 0) document.getElementById("beep-sound").play();
+        if (timeLeft <= 0) { clearInterval(timerInterval); autoSubmitWrong(); }
+      }, 1000);
+    }
+
+    async function submitAnswer(choice) {
+      clearInterval(timerInterval);
+      const res = await fetch("http://127.0.0.1:5000/answer", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ name: playerName, choice })
+      });
+      const data = await res.json();
+      if (data.correct) {
+        score++;
+        document.getElementById("result").innerHTML = "<p class='text-success'>✅ Correct!</p>";
+      } else {
+        document.getElementById("result").innerHTML = `<p class='text-danger'>❌ Wrong. Correct answer: ${data.correct_answer}</p>`;
+      }
+      currentQuestion = data.next_question;
+      setTimeout(() => { document.getElementById("result").innerHTML = ""; showQuestion(currentQuestion); }, 1500);
+    }
+
+    async function autoSubmitWrong() {
+      document.getElementById("result").innerHTML = "<p class='text-warning'>⏰ Time's up! Moving to next question...</p>";
+      await submitAnswer("___NO_ANSWER___");
+    }
+
+    async function loadLeaderboard() {
+      const resGlobal = await fetch("http://127.0.0.1:5000/leaderboard");
+      const globalData = await resGlobal.json();
+      const resSubject = await fetch(`http://127.0.0.1:5000/leaderboard/${subject}`);
+      const subjectData = await resSubject.json();
+
+      let html = "<h3>🌍 Global Leaderboard</h3><ol class='list-group list-group-numbered'>";
+      globalData.forEach(entry => {
+        html += `<li class="list-group-item">${entry.name} - ${entry.subject}: ${entry.score}/${entry.total} (${entry.percentage}%)</li>`;
+      });
+      html += "</ol>";
+
+      html += `<h3 class="mt-3">📘 ${subject} Leaderboard</h3><ol class='list-group list-group-numbered'>`;
+      subjectData.forEach(entry => {
+        html += `<li class="list-group-item">${entry.name}: ${entry.score}/${entry.total} (${entry.percentage}%)</li>`;
+      });
+      html += "</ol>";
+
+      document.getElementById("leaderboard").innerHTML = html;
+    }
+
+    function restartQuiz() {
+      askPlayerDetails();
+      document.getElementById("leaderboard").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+      document.getElementById("summary").innerHTML = "";
+      startQuiz();
+    }
+
+    // Start automatically
+    askPlayerDetails();
+    startQuiz();
+  </script>
+</body>
+</html>
