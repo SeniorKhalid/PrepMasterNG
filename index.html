@@ -195,8 +195,20 @@
       askPlayerDetails();
       document.getElementById("leaderboard").innerHTML = "";
       document.getElementById("result").innerHTML = "";
-      document.getElementById("summary").innerHTML = "";
+      document.getElementById("summary").innerHTML = `
+        <p>Your score is ${score}/10</p>
+        <button onclick="shareScore(${score})" class="btn btn-primary mt-3">
+          📤 Share Your Score
+        </button>
+      `;
+
       startQuiz();
+    }
+    
+    function shareScore(score) {
+      const text = `I scored ${score}/10 on PrepMaster NG! Try it now: https://seniorkhalid.github.io/PrepMasterNG/`;
+      const tweetLink = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+      window.open(tweetLink, '_blank');
     }
 
     // Start automatically
@@ -205,4 +217,5 @@
   </script>
 </body>
 </html>
+
 
