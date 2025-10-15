@@ -189,7 +189,20 @@ def leaderboard_by_subject(subject):
     board = get_leaderboard(subject=subject)
     return jsonify(board)
 
+# 🔐 Admin route to clear leaderboard
+@app.route("/clear_leaderboard", methods=["POST"])
+def clear_leaderboard_route():
+    data = request.get_json(force=True)
+    password = data.get("password")
+    if password != "0192837465":  # Change this to your own secure password
+        return jsonify({"error": "Unauthorized"}), 403
 
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM leaderboard")
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Leaderboard cleared successfully"})
 if __name__ == "__main__":
     init_db()
     app.run(debug=True)
