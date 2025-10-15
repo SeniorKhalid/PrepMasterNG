@@ -86,7 +86,7 @@ sessions = {}
 
 @app.route("/")
 def home():
-    return render_template
+    return render_template("index.html")
 
 
 @app.route("/subjects", methods=["GET"])
