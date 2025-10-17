@@ -157,7 +157,7 @@ def leaderboard_subject(subject):
 def clear_leaderboard():
     data = request.get_json(force=True)
     password = data.get("password")
-    if password != "admin123":
+    if password != "0192837465":
         return jsonify({"error": "Invalid admin password"}), 403
 
     conn = sqlite3.connect(DB_FILE)
