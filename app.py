@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 from questions import subjects
+import os
 
 app = Flask(__name__)
 DB_FILE = "leaderboard.db"
@@ -36,7 +37,8 @@ init_db()
 # 🏠 Home page
 @app.route("/")
 def home():
-    return render_template("index.html")
+    username = request.args.get("username")
+    return render_template("index.html", username=username)
 
 # 🔐 Auth page
 @app.route("/auth")
@@ -112,7 +114,7 @@ def submit_answer():
         "next_question": next_q
     })
 
-# 🏆 Global leaderboard (by total points)
+# 🏆 Global leaderboard
 @app.route("/leaderboard")
 def leaderboard_global():
     conn = sqlite3.connect(DB_FILE)
@@ -131,7 +133,7 @@ def leaderboard_global():
         "score": r[1]
     } for r in rows])
 
-# 🧠 Subject leaderboard (individual attempts)
+# 🧠 Subject leaderboard
 @app.route("/leaderboard/<subject>")
 def leaderboard_subject(subject):
     subject = subject.strip().title()
@@ -212,6 +214,12 @@ def dashboard(username):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
+    # Check if user exists
+    c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+    if not c.fetchone():
+        conn.close()
+        return render_template("auth.html")
+
     # Get all users' total scores
     c.execute("""
         SELECT name, SUM(score) AS total_score
@@ -250,4 +258,5 @@ def dashboard(username):
 
 # 🚀 Run app
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
