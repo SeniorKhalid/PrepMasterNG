@@ -5,16 +5,24 @@ from questions import subjects
 import random
 import os
 from dotenv import load_dotenv
+from datetime import timedelta
 
-# Load .env file (for local development)
+# Load .env file
 load_dotenv()
 
 app = Flask(__name__)
 DB_FILE = "leaderboard.db"
 
-# ✅ Use environment variables for secrets
+# ✅ Use environment variables
 app.secret_key = os.environ.get("SECRET_KEY", "fallback-secret")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "fallback-password")
+
+# ✅ Set session lifetime
+app.permanent_session_lifetime = timedelta(days=7)
+
+@app.before_request
+def make_session_permanent():
+    session.permanent = True
 
 # 🔧 Initialize database
 def init_db():
@@ -59,7 +67,6 @@ def auth_page():
 def get_subjects():
     return jsonify({"subjects": list(subjects.keys())})
 
-
 # 🚀 Start quiz
 @app.route("/start_quiz", methods=["POST"])
 def start_quiz():
@@ -74,17 +81,13 @@ def start_quiz():
     if subject not in subjects or not subjects[subject]:
         return jsonify({"error": "Invalid or empty subject"}), 400
 
-    num_questions = int(request.json.get("num_questions", 10))
     available_questions = subjects[subject]
-    if num_questions > len(available_questions):
-        num_questions = len(available_questions)
-
+    num_questions = min(requested, len(available_questions))
     questions = random.sample(available_questions, k=num_questions)
 
     if not questions:
         return jsonify({"error": "No questions available"}), 404
 
-    # ✅ Store quiz state in session
     session["quiz_state"] = {
         "name": name,
         "subject": subject,
@@ -97,7 +100,6 @@ def start_quiz():
         "first_question": questions[0],
         "total_questions": len(questions)
     })
-
 
 # ✅ Submit answer
 @app.route("/answer", methods=["POST"])
@@ -118,8 +120,6 @@ def submit_answer():
 
     state["index"] += 1
     next_q = state["questions"][state["index"]] if state["index"] < len(state["questions"]) else None
-
-    # ✅ Update session with new state
     session["quiz_state"] = state
 
     if not next_q:
@@ -132,8 +132,6 @@ def submit_answer():
         """, (state["name"], state["subject"], state["score"], len(state["questions"]), percentage))
         conn.commit()
         conn.close()
-
-        # ✅ Clear quiz state after completion
         session.pop("quiz_state", None)
 
     return jsonify({
@@ -141,7 +139,6 @@ def submit_answer():
         "correct_answer": question["answer"],
         "next_question": next_q
     })
-
 
 # 🏆 Global leaderboard
 @app.route("/leaderboard")
@@ -215,6 +212,7 @@ def login():
     conn.close()
 
     if row and check_password_hash(row[0], password):
+        session["username"] = username
         return jsonify({"message": "Login successful"})
     else:
         return jsonify({"error": "Invalid credentials"}), 401
@@ -222,16 +220,16 @@ def login():
 # 📊 User Dashboard
 @app.route("/dashboard/<username>")
 def dashboard(username):
+    if session.get("username") != username:
+        return redirect(url_for("auth_page"))
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-
-    # Check if user exists
     c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
     if not c.fetchone():
         conn.close()
-        return render_template("auth.html")
+        return redirect(url_for("auth_page"))
 
-    # Get all users' total scores
     c.execute("""
         SELECT name, SUM(score) AS total_score
         FROM leaderboard
@@ -239,12 +237,9 @@ def dashboard(username):
         ORDER BY total_score DESC
     """)
     all_scores = c.fetchall()
-
-    # Find the user's rank
     rank = next((i + 1 for i, row in enumerate(all_scores) if row[0] == username), None)
     user_total = next((row[1] for row in all_scores if row[0] == username), 0)
 
-    # Get user's quiz history
     c.execute("""
         SELECT subject, score, total, percentage, created_at
         FROM leaderboard
@@ -266,6 +261,12 @@ def dashboard(username):
                            rank=rank,
                            total_score=user_total
                            )
+
+# 🔐 Logout
+@app.route("/logout")
+def logout():
+    session.pop("username", None)
+    return redirect(url_for("auth_page"))
 
 # 🔑 Admin login
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -289,7 +290,6 @@ def admin_users():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    # Users
     if search:
         c.execute("SELECT id, username FROM users WHERE username LIKE ? ORDER BY id DESC", (f"%{search}%",))
     else:
@@ -307,7 +307,6 @@ def admin_users():
 
     conn.close()
     return render_template("admin_users.html", users=users, search=search, leaderboard=leaderboard)
-
 # 🗑️ Delete a user by ID
 @app.route("/admin/delete_user/<int:user_id>", methods=["POST"])
 def delete_user(user_id):
@@ -320,7 +319,6 @@ def delete_user(user_id):
     conn.commit()
     conn.close()
     return jsonify({"message": "User deleted successfully"})
-
 
 # 🧹 Clear leaderboard (protected)
 @app.route("/admin/clear_leaderboard", methods=["POST"])
@@ -335,13 +333,11 @@ def clear_leaderboard():
     conn.close()
     return jsonify({"message": "Leaderboard cleared"})
 
-
 # 🔓 Admin logout
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("is_admin", None)
-    return redirect(url_for("auth_page"))  # redirect to /auth
-
+    return redirect(url_for("auth_page"))
 
 # 🚀 Run app
 if __name__ == "__main__":
