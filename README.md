@@ -14,7 +14,7 @@ PrepMaster NG is a sleek, browser-based quiz application built with HTML. It off
 
 - HTML5
 - CSS3
-- JavaScript (vanilla)
+- JavaScript
 - Python # 🚀 PrepMaster NG
 
 PrepMaster NG is a sleek, browser-based quiz application built with HTML. It offers a fast and interactive way to test knowledge across various topics. Whether you're a student, educator, or trivia enthusiast, this app makes learning fun and engaging.
